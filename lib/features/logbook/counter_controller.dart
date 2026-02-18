@@ -1,65 +1,66 @@
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class CounterController {
-  int _value = 0; // nilai counter
-  int _step = 1; // jumlah kenaikan/penurunan
-  final List<String> _history = [];
+class CounterController with ChangeNotifier {
+  int _count = 0;
+  int _step = 1; 
+  List<String> _history = [];
 
-  int get value => _value;
+  int get count => _count;
   int get step => _step;
   List<String> get history => _history;
 
-  // ================= INCREMENT =================
+  CounterController() {
+    _loadData();
+  }
+
+  void setStep(String value) {
+    int? parsedValue = int.tryParse(value);
+    if (parsedValue != null && parsedValue > 0) {
+      _step = parsedValue;
+    } else {
+      _step = 1;
+    }
+    notifyListeners();
+  }
+
   void increment() {
-    _value += _step;
-    _addHistory("Tambah $_step → $_value");
+    _count += _step;
+    _addHistory("Tambah $_step");
+    _saveData();
+    notifyListeners();
   }
 
-  // ================= DECREMENT =================
   void decrement() {
-    _value -= _step;
-    _addHistory("Kurang $_step → $_value");
+    if (_count - _step >= 0) {
+      _count -= _step;
+      _addHistory("Kurang $_step");
+    } else {
+      _count = 0;
+      _addHistory("Reset ke 0");
+    }
+    _saveData();
+    notifyListeners();
   }
 
-  // ================= SET STEP =================
-  void setStep(int newStep) {
-    _step = newStep;
-  }
-
-  // ================= SET VALUE (UNTUK LOAD DATA) =================
-  void setValue(int newValue) {
-    _value = newValue;
-  }
-
-  // ================= RESET =================
-  void reset() {
-    _value = 0;
-    _history.clear();
-  }
-
-  // ================= HISTORY LIMIT 5 =================
-  void _addHistory(String text) {
-    _history.add(text);
-
-    // Membatasi maksimal 5 riwayat terakhir
+  void _addHistory(String activity) {
+    String time = "${DateTime.now().hour}:${DateTime.now().minute}";
+    _history.insert(0, "$activity pada $time");
     if (_history.length > 5) {
-      _history.removeAt(0);
+      _history.removeLast();
     }
   }
 
-  // =====================================================
-  // ================= SHARED PREFERENCES =================
-  // =====================================================
-
-  // SAVE angka terakhir
-  Future<void> saveLastValue() async {
+  Future<void> _saveData() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('last_counter', _value);
+    await prefs.setInt('counter_value', _count);
+    await prefs.setStringList('history_list', _history);
   }
 
-  // LOAD angka terakhir
-  Future<void> loadLastValue() async {
+  Future<void> _loadData() async {
     final prefs = await SharedPreferences.getInstance();
-    _value = prefs.getInt('last_counter') ?? 0;
+    _count = prefs.getInt('counter_value') ?? 0;
+    _history = prefs.getStringList('history_list') ?? [];
+    notifyListeners();
   }
 }
