@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'login_controller.dart';
-import '../logbook/counter_view.dart';
+import '../logbook/log_view.dart';
 
 class LoginView extends StatefulWidget {
   const LoginView({super.key});
@@ -80,9 +80,9 @@ class _LoginViewState extends State<LoginView> {
                               if (success && mounted) {
                                 Navigator.pushAndRemoveUntil(
                                   context,
-                                  MaterialPageRoute(builder: (context) => CounterView(username: _usernameController.text)),
-                                  (route) => false,
-                                );
+                                  MaterialPageRoute(builder: (context) => LogView(username: _usernameController.text)),
+                                    (route) => false,
+                                  );
                               } else if (mounted) {
                                 ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Login Gagal!'), backgroundColor: colors.error));
                               }

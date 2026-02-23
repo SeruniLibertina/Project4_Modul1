@@ -64,10 +64,15 @@ class _OnboardingViewState extends State<OnboardingView> {
                               )
                             ],
                           ),
-                          child: Image.asset(
-                            _onboardingData[index]["image"]!,
-                            height: 200,
-                            fit: BoxFit.contain,
+                          // IMPLEMENTASI CLIPRRECT DI SINI
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(100.0), // Setengah dari lebar/tinggi gambar
+                            child: Image.asset(
+                              _onboardingData[index]["image"]!,
+                              width: 200, // Harus sama dengan height
+                              height: 200,
+                              fit: BoxFit.cover, // Memastikan gambar menutupi seluruh area lingkaran
+                            ),
                           ),
                         ),
                         const SizedBox(height: 40),
