@@ -4,37 +4,51 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'models/log_model.dart';
 
 class LogController {
-  // ValueNotifier berfungsi sebagai 'Speaker' yang akan mengabari UI jika ada perubahan data
   final ValueNotifier<List<LogModel>> logsNotifier = ValueNotifier([]);
+  // List cadangan untuk menampung hasil pencarian
+  final ValueNotifier<List<LogModel>> filteredLogs = ValueNotifier([]); 
   static const String _storageKey = 'user_logs_data';
 
   LogController() {
-    // Saat Controller dipanggil, langsung muat data dari penyimpanan
     loadFromDisk();
   }
 
-  // Fungsi Create (Tambah Data)
-  void addLog(String title, String desc) {
+  // Fitur Pencarian (Real-time Filtering)
+  void searchLog(String query) {
+    if (query.isEmpty) {
+      filteredLogs.value = logsNotifier.value;
+    } else {
+      filteredLogs.value = logsNotifier.value
+          .where((log) => log.title.toLowerCase().contains(query.toLowerCase()))
+          .toList();
+    }
+  }
+
+  // Fungsi Create (Tambah Data) ditambahkan parameter kategori
+  void addLog(String title, String desc, String category) {
     final newLog = LogModel(
       title: title, 
       description: desc, 
-      date: DateTime.now().toString()
+      date: DateTime.now().toString(),
+      category: category,
     );
-    // Mengganti daftar lama dengan daftar baru yang ditambah newLog
     logsNotifier.value = [...logsNotifier.value, newLog];
-    saveToDisk(); // Simpan permanen
+    filteredLogs.value = logsNotifier.value; // Update list yang ditampilkan
+    saveToDisk();
   }
 
-  // Fungsi Update (Edit Data)
-  void updateLog(int index, String title, String desc) {
+  // Fungsi Update (Edit Data) ditambahkan parameter kategori
+  void updateLog(int index, String title, String desc, String category) {
     final currentLogs = List<LogModel>.from(logsNotifier.value);
     currentLogs[index] = LogModel(
       title: title, 
       description: desc, 
-      date: currentLogs[index].date // Pertahankan tanggal asli
+      date: currentLogs[index].date,
+      category: category,
     );
     logsNotifier.value = currentLogs;
-    saveToDisk(); // Simpan permanen
+    filteredLogs.value = logsNotifier.value; // Update list yang ditampilkan
+    saveToDisk();
   }
 
   // Fungsi Delete (Hapus Data)
@@ -42,17 +56,16 @@ class LogController {
     final currentLogs = List<LogModel>.from(logsNotifier.value);
     currentLogs.removeAt(index);
     logsNotifier.value = currentLogs;
-    saveToDisk(); // Simpan permanen
+    filteredLogs.value = logsNotifier.value; // Update list yang ditampilkan
+    saveToDisk();
   }
 
-  // Konversi List of Object -> JSON String -> Simpan ke SharedPreferences
   Future<void> saveToDisk() async {
     final prefs = await SharedPreferences.getInstance();
     final String encodedData = jsonEncode(logsNotifier.value.map((e) => e.toMap()).toList());
     await prefs.setString(_storageKey, encodedData);
   }
 
-  // Ambil JSON String -> List of Map -> List of Object LogModel
   Future<void> loadFromDisk() async {
     final prefs = await SharedPreferences.getInstance();
     final String? data = prefs.getString(_storageKey);
@@ -60,6 +73,7 @@ class LogController {
     if (data != null) {
       final List decoded = jsonDecode(data);
       logsNotifier.value = decoded.map((e) => LogModel.fromMap(e)).toList();
+      filteredLogs.value = logsNotifier.value; // Isi list pencarian di awal
     }
   }
 }
