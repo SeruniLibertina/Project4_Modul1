@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'log_controller.dart';
-import 'models/log_model.dart';
-import '../auth/login_view.dart'; 
+import 'package:logbook_app_001/features/logbook/log_controller.dart';
+import 'package:logbook_app_001/features/logbook/models/log_model.dart';
+import 'package:logbook_app_001/features/auth/login_view.dart';
+import 'package:logbook_app_001/services/mongo_service.dart';
+import 'package:logbook_app_001/helpers/log_helper.dart';
 
 class LogView extends StatefulWidget {
   final String username;
@@ -13,7 +15,7 @@ class LogView extends StatefulWidget {
 
 class _LogViewState extends State<LogView> {
   // Inisialisasi controller
-  final LogController _controller = LogController();
+  late LogController _controller;
   
   // Controller untuk menangkap input teks
   final TextEditingController _titleController = TextEditingController();
@@ -22,6 +24,41 @@ class _LogViewState extends State<LogView> {
   // Variabel untuk menyimpan kategori yang dipilih saat input
   String _selectedCategory = 'Pribadi';
   final List<String> _categories = ['Pekerjaan', 'Pribadi', 'Urgent', 'Umum'];
+
+  // Variabel Cloud & Search
+  bool _isLoading = false;
+  String _searchQuery = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = LogController();
+    // Memulai koneksi ke MongoDB saat layar dibuka
+    Future.microtask(() => _initDatabase());
+  }
+
+  // FUNGSI KONEKSI CLOUD MONGODB
+  Future<void> _initDatabase() async {
+    setState(() => _isLoading = true);
+    try {
+      await LogHelper.writeLog("UI: Menghubungi MongoService.connect()...", source: "log_view.dart");
+      await MongoService().connect().timeout(
+        const Duration(seconds: 15),
+        onTimeout: () => throw Exception("Koneksi Cloud Timeout. Periksa IP Whitelist (0.0.0.0/0)."),
+      );
+      await _controller.loadFromDisk();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("Masalah Koneksi: $e"), backgroundColor: Colors.redAccent),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
 
   // Fungsi pewarnaan Card dengan tema Pastel Aesthetic
   Color _getCategoryColor(String category) {
@@ -47,13 +84,12 @@ class _LogViewState extends State<LogView> {
         content: const Text("Apakah Anda yakin ingin keluar?"),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context), // Tutup dialog
+            onPressed: () => Navigator.pop(context), 
             child: const Text("Batal", style: TextStyle(color: Colors.black87)),
           ),
           TextButton(
             onPressed: () {
-              Navigator.pop(context); // Tutup dialog
-              // Arahkan kembali ke halaman Login
+              Navigator.pop(context); 
               Navigator.pushAndRemoveUntil(
                 context,
                 MaterialPageRoute(builder: (context) => const LoginView()),
@@ -71,7 +107,7 @@ class _LogViewState extends State<LogView> {
   void _showAddLogDialog() {
     _titleController.clear();
     _contentController.clear();
-    _selectedCategory = 'Pribadi'; // Setel ulang kategori ke default
+    _selectedCategory = 'Pribadi'; 
     
     showDialog(
       context: context,
@@ -127,6 +163,7 @@ class _LogViewState extends State<LogView> {
             ),
             onPressed: () {
               if (_titleController.text.isNotEmpty) {
+                // Panggil AddLog dari Controller (Akan otomatis masuk ke Cloud)
                 _controller.addLog(
                   _titleController.text, 
                   _contentController.text,
@@ -146,7 +183,7 @@ class _LogViewState extends State<LogView> {
   void _showEditLogDialog(int index, LogModel log) {
     _titleController.text = log.title;
     _contentController.text = log.description;
-    _selectedCategory = log.category; // Ambil kategori asli
+    _selectedCategory = log.category; 
     
     showDialog(
       context: context,
@@ -222,7 +259,7 @@ class _LogViewState extends State<LogView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFFAFAFA), // Warna latar off-white
+      backgroundColor: const Color(0xFFFAFAFA), 
       appBar: AppBar(
         title: Text(
           'Logbook: ${widget.username}', 
@@ -244,7 +281,7 @@ class _LogViewState extends State<LogView> {
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: TextField(
-              onChanged: (value) => _controller.searchLog(value),
+              onChanged: (value) => setState(() => _searchQuery = value),
               decoration: InputDecoration(
                 labelText: "Cari Catatan...",
                 filled: true,
@@ -263,9 +300,30 @@ class _LogViewState extends State<LogView> {
           ),
           Expanded(
             child: ValueListenableBuilder<List<LogModel>>(
-              valueListenable: _controller.filteredLogs, // Menggunakan list pencarian
+              valueListenable: _controller.logsNotifier, 
               builder: (context, currentLogs, child) {
-                if (currentLogs.isEmpty) {
+                
+                // 1. Indikator Loading Cloud
+                if (_isLoading) {
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        SizedBox(height: 16),
+                        Text("Membuka Koneksi Atlas...", style: TextStyle(color: Colors.black54)),
+                      ],
+                    ),
+                  );
+                }
+
+                // Melakukan filter pencarian (Mencegah salah hapus index)
+                final displayLogs = currentLogs.where((log) => 
+                  log.title.toLowerCase().contains(_searchQuery.toLowerCase())
+                ).toList();
+
+                // 2. Jika Data Kosong
+                if (displayLogs.isEmpty) {
                   return Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -273,7 +331,7 @@ class _LogViewState extends State<LogView> {
                         Icon(Icons.speaker_notes_off, size: 80, color: Colors.grey.shade300),
                         const SizedBox(height: 16),
                         Text(
-                          "Belum ada catatan logbook.",
+                          currentLogs.isEmpty ? "Belum ada catatan di Cloud." : "Pencarian tidak ditemukan.",
                           style: TextStyle(fontSize: 16, color: Colors.grey.shade500),
                         ),
                       ],
@@ -281,17 +339,22 @@ class _LogViewState extends State<LogView> {
                   );
                 }
                 
+                // 3. Menampilkan List Data
                 return ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: currentLogs.length,
+                  itemCount: displayLogs.length,
                   itemBuilder: (context, index) {
-                    final log = currentLogs[index];
+                    final log = displayLogs[index];
+                    
+                    // Mendapatkan index asli dari data utama (Penting agar tidak salah update/hapus)
+                    final realIndex = currentLogs.indexOf(log); 
+
                     return Dismissible(
                       key: UniqueKey(),
                       direction: DismissDirection.endToStart,
                       background: Container(
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFCDD2), // Soft red untuk background delete
+                          color: const Color(0xFFFFCDD2), 
                           borderRadius: BorderRadius.circular(15),
                         ),
                         margin: const EdgeInsets.only(bottom: 12),
@@ -300,10 +363,10 @@ class _LogViewState extends State<LogView> {
                         child: const Icon(Icons.delete_outline, color: Colors.red, size: 28),
                       ),
                       onDismissed: (direction) {
-                        _controller.removeLog(index);
+                        _controller.removeLog(realIndex);
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
-                            content: Text("Catatan dihapus", style: TextStyle(color: Colors.black87)),
+                            content: Text("Catatan dihapus dari Cloud", style: TextStyle(color: Colors.black87)),
                             backgroundColor: Color(0xFFFEF9C3),
                             behavior: SnackBarBehavior.floating,
                           ),
@@ -326,7 +389,7 @@ class _LogViewState extends State<LogView> {
                                 color: Colors.white.withOpacity(0.6),
                                 shape: BoxShape.circle,
                               ),
-                              child: const Icon(Icons.assignment_outlined, color: Colors.black87),
+                              child: const Icon(Icons.cloud_done_outlined, color: Colors.black87),
                             ),
                             title: Text(log.title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
                             subtitle: Column(
@@ -349,20 +412,20 @@ class _LogViewState extends State<LogView> {
                               ],
                             ),
                             trailing: Wrap(
-                              spacing: -8, // Mengatur jarak antar tombol agar tidak terlalu lebar
+                              spacing: -8, 
                               children: [
                                 IconButton(
                                   icon: const Icon(Icons.edit_outlined, color: Colors.blueGrey),
-                                  onPressed: () => _showEditLogDialog(index, log),
+                                  onPressed: () => _showEditLogDialog(realIndex, log),
                                 ),
                                 IconButton(
                                   icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                                   onPressed: () {
-                                    _controller.removeLog(index);
+                                    _controller.removeLog(realIndex);
                                     ScaffoldMessenger.of(context).showSnackBar(
                                       const SnackBar(
-                                        content: Text("Catatan dihapus", style: TextStyle(color: Colors.black87)),
-                                        backgroundColor: Color(0xFFFEF9C3), // Soft yellow snackbar
+                                        content: Text("Catatan dihapus dari Cloud", style: TextStyle(color: Colors.black87)),
+                                        backgroundColor: Color(0xFFFEF9C3), 
                                         behavior: SnackBarBehavior.floating,
                                       ),
                                     );
@@ -383,7 +446,7 @@ class _LogViewState extends State<LogView> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _showAddLogDialog,
-        backgroundColor: const Color(0xFFE0F2FE), // Warna Soft Blue
+        backgroundColor: const Color(0xFFE0F2FE), 
         foregroundColor: Colors.black87,
         elevation: 2,
         child: const Icon(Icons.add),
