@@ -4,6 +4,7 @@ import 'package:logbook_app_001/features/logbook/models/log_model.dart';
 import 'package:logbook_app_001/features/auth/login_view.dart';
 import 'package:logbook_app_001/services/mongo_service.dart';
 import 'package:logbook_app_001/helpers/log_helper.dart';
+import 'package:intl/intl.dart'; // Package tambahan untuk format tanggal
 
 class LogView extends StatefulWidget {
   final String username;
@@ -339,105 +340,139 @@ class _LogViewState extends State<LogView> {
                   );
                 }
                 
-                // 3. Menampilkan List Data
-                return ListView.builder(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: displayLogs.length,
-                  itemBuilder: (context, index) {
-                    final log = displayLogs[index];
-                    
-                    // Mendapatkan index asli dari data utama (Penting agar tidak salah update/hapus)
-                    final realIndex = currentLogs.indexOf(log); 
-
-                    return Dismissible(
-                      key: UniqueKey(),
-                      direction: DismissDirection.endToStart,
-                      background: Container(
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFFFCDD2), 
-                          borderRadius: BorderRadius.circular(15),
+                // 3. Menampilkan List Data dengan RefreshIndicator (PULL-TO-REFRESH)
+                return RefreshIndicator(
+                  onRefresh: () async {
+                    await _controller.loadFromDisk();
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Data berhasil diperbarui!", style: TextStyle(color: Colors.black87)),
+                          backgroundColor: Color(0xFFE0F2FE),
+                          duration: Duration(seconds: 1),
                         ),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 20),
-                        child: const Icon(Icons.delete_outline, color: Colors.red, size: 28),
-                      ),
-                      onDismissed: (direction) {
-                        _controller.removeLog(realIndex);
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text("Catatan dihapus dari Cloud", style: TextStyle(color: Colors.black87)),
-                            backgroundColor: Color(0xFFFEF9C3),
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      },
-                      child: Card(
-                        color: _getCategoryColor(log.category),
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(15),
-                          side: BorderSide(color: Colors.black.withOpacity(0.05)),
-                        ),
-                        margin: const EdgeInsets.only(bottom: 12),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: ListTile(
-                            leading: Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.6),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.cloud_done_outlined, color: Colors.black87),
-                            ),
-                            title: Text(log.title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text(log.description, style: const TextStyle(color: Colors.black87)),
-                                const SizedBox(height: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.5),
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Text(
-                                    log.category, 
-                                    style: TextStyle(fontSize: 11, color: Colors.grey.shade800, fontWeight: FontWeight.w500)
-                                  ),
-                                ),
-                              ],
-                            ),
-                            trailing: Wrap(
-                              spacing: -8, 
-                              children: [
-                                IconButton(
-                                  icon: const Icon(Icons.edit_outlined, color: Colors.blueGrey),
-                                  onPressed: () => _showEditLogDialog(realIndex, log),
-                                ),
-                                IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                                  onPressed: () {
-                                    _controller.removeLog(realIndex);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text("Catatan dihapus dari Cloud", style: TextStyle(color: Colors.black87)),
-                                        backgroundColor: Color(0xFFFEF9C3), 
-                                        behavior: SnackBarBehavior.floating,
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
+                      );
+                    }
                   },
+                  child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: displayLogs.length,
+                    itemBuilder: (context, index) {
+                      final log = displayLogs[index];
+                      
+                      // Mendapatkan index asli dari data utama
+                      final realIndex = currentLogs.indexOf(log); 
+
+                      // PROSES FORMAT TANGGAL MENGGUNAKAN PACKAGE INTL
+                      String formattedDate = "";
+                      try {
+                        DateTime parsedDate = DateTime.parse(log.date);
+                        formattedDate = DateFormat('dd MMM yyyy, HH:mm').format(parsedDate);
+                      } catch (e) {
+                        formattedDate = "Tanggal tidak valid";
+                      }
+
+                      return Dismissible(
+                        key: UniqueKey(),
+                        direction: DismissDirection.endToStart,
+                        background: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFCDD2), 
+                            borderRadius: BorderRadius.circular(15),
+                          ),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          alignment: Alignment.centerRight,
+                          padding: const EdgeInsets.only(right: 20),
+                          child: const Icon(Icons.delete_outline, color: Colors.red, size: 28),
+                        ),
+                        onDismissed: (direction) {
+                          _controller.removeLog(realIndex);
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text("Catatan dihapus dari Cloud", style: TextStyle(color: Colors.black87)),
+                              backgroundColor: Color(0xFFFEF9C3),
+                              behavior: SnackBarBehavior.floating,
+                            ),
+                          );
+                        },
+                        child: Card(
+                          color: _getCategoryColor(log.category),
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(15),
+                            side: BorderSide(color: Colors.black.withOpacity(0.05)),
+                          ),
+                          margin: const EdgeInsets.only(bottom: 12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 4),
+                            child: ListTile(
+                              leading: Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withOpacity(0.6),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(Icons.cloud_done_outlined, color: Colors.black87),
+                              ),
+                              title: Text(log.title, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black87)),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const SizedBox(height: 4),
+                                  Text(log.description, style: const TextStyle(color: Colors.black87)),
+                                  const SizedBox(height: 8),
+                                  
+                                  // MENAMPILKAN KATEGORI DAN TANGGAL BERDAMPINGAN
+                                  Row(
+                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withOpacity(0.5),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          log.category, 
+                                          style: TextStyle(fontSize: 11, color: Colors.grey.shade800, fontWeight: FontWeight.w500)
+                                        ),
+                                      ),
+                                      Text(
+                                        formattedDate,
+                                        style: const TextStyle(fontSize: 11, color: Colors.black54, fontStyle: FontStyle.italic),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              trailing: Wrap(
+                                spacing: -8, 
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.edit_outlined, color: Colors.blueGrey),
+                                    onPressed: () => _showEditLogDialog(realIndex, log),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
+                                    onPressed: () {
+                                      _controller.removeLog(realIndex);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        const SnackBar(
+                                          content: Text("Catatan dihapus dari Cloud", style: TextStyle(color: Colors.black87)),
+                                          backgroundColor: Color(0xFFFEF9C3), 
+                                          behavior: SnackBarBehavior.floating,
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 );
               },
             ),
