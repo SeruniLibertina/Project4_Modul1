@@ -1,37 +1,61 @@
-import 'package:mongo_dart/mongo_dart.dart';
+import 'package:hive/hive.dart';
+import 'package:mongo_dart/mongo_dart.dart' show ObjectId;
 
+// Baris ini WAJIB ada, nanti file ini akan di-generate otomatis oleh Flutter
+part 'log_model.g.dart';
+
+@HiveType(typeId: 0)
 class LogModel {
-  final ObjectId? id; // Wajib ada untuk penanda unik di MongoDB
+  @HiveField(0)
+  final String? id;
+
+  @HiveField(1)
   final String title;
-  final String date;
+
+  @HiveField(2)
   final String description;
-  final String category;
+
+  @HiveField(3)
+  final String date;
+
+  @HiveField(4)
+  final String authorId; // ID unik pengguna yang membuat log
+
+  @HiveField(5)
+  final String teamId;   // ID kelompok
+
+  @HiveField(6)
+  final bool isPublic;   // Status privasi (Untuk Task 5)
 
   LogModel({
-    this.id, // Tambahkan di constructor
+    this.id,
     required this.title,
-    required this.date,
     required this.description,
-    this.category = 'Umum',
+    required this.date,
+    required this.authorId,
+    required this.teamId,
+    this.isPublic = false, // Default-nya private
   });
+
+  Map<String, dynamic> toMap() => {
+    '_id': id != null ? ObjectId.fromHexString(id!) : ObjectId(),
+    'title': title,
+    'description': description,
+    'date': date,
+    'authorId': authorId,
+    'teamId': teamId,
+    'isPublic': isPublic,
+  };
 
   factory LogModel.fromMap(Map<String, dynamic> map) {
     return LogModel(
-      id: map['_id'] as ObjectId?, // Ambil _id dari Cloud (BSON)
+      id: (map['_id'] as ObjectId?)?.oid,
       title: map['title'] ?? '',
-      date: map['date'] ?? '',
       description: map['description'] ?? '',
-      category: map['category'] ?? 'Umum',
+      date: map['date'] ?? '',
+      authorId: map['authorId'] ?? 'unknown_user',
+      teamId: map['teamId'] ?? 'no_team',
+      isPublic: map['isPublic'] ?? false,
     );
-  }
-
-  Map<String, dynamic> toMap() {
-    return {
-      '_id': id ?? ObjectId(), // Buat ObjectId otomatis jika mengirim data baru
-      'title': title,
-      'date': date,
-      'description': description,
-      'category': category,
-    };
   }
 }

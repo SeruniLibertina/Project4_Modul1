@@ -1,15 +1,21 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 import 'features/auth/login_controller.dart';
 import 'features/onboarding/onboarding_view.dart';
-import 'package:flutter_dotenv/flutter_dotenv.dart'; // pastikan mengimpor ini
+import 'features/logbook/models/log_model.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await dotenv.load(fileName: ".env");
+
+  await Hive.initFlutter();
+  Hive.registerAdapter(LogModelAdapter()); 
+  
+  await Hive.openBox<LogModel>('offline_logs'); 
   runApp(const MyApp());
 }
-
 
 class MyApp extends StatelessWidget {
   const MyApp({super.key});

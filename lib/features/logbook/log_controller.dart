@@ -1,96 +1,102 @@
 import 'package:flutter/material.dart';
-import 'package:mongo_dart/mongo_dart.dart';
-import 'package:logbook_app_001/features/logbook/models/log_model.dart';
-import 'package:logbook_app_001/services/mongo_service.dart';
-import 'package:logbook_app_001/helpers/log_helper.dart';
+import 'package:hive_flutter/hive_flutter.dart';
+import 'package:mongo_dart/mongo_dart.dart' show ObjectId;
+import 'models/log_model.dart';
+import '../../services/mongo_service.dart';
+import '../../helpers/log_helper.dart';
 
 class LogController {
-  final ValueNotifier<List<LogModel>> logsNotifier = ValueNotifier<List<LogModel>>([]);
+  final ValueNotifier<List<LogModel>> logsNotifier = ValueNotifier([]);
+  
+  // Mengakses box Hive yang sudah dibuka di main.dart
+  final _myBox = Hive.box<LogModel>('offline_logs');
 
-  List<LogModel> get logs => logsNotifier.value;
+  /// 1. LOAD DATA (Offline-First Strategy)
+  Future<void> loadLogs(String teamId) async {
+    // Langkah 1: Ambil data dari Hive (Sangat Cepat/Instan)
+    logsNotifier.value = _myBox.values.toList();
 
-  // Constructor
-  LogController() {
-    // Kita tidak langsung memanggil loadFromDisk() di sini.
-    // Pemanggilan akan dilakukan dari UI (LogView) agar bisa memunculkan animasi loading.
-  }
-
-  // MENGAMBIL DATA DARI CLOUD
-  Future<void> loadFromDisk() async {
+    // Langkah 2: Sync dari Cloud (Background Process)
     try {
-      final cloudData = await MongoService().getLogs();
+      final cloudData = await MongoService().getLogs(teamId);
+
+      // Update Hive dengan data terbaru dari Cloud agar sinkron
+      await _myBox.clear();
+      await _myBox.addAll(cloudData);
+
+      // Update UI dengan data Cloud
       logsNotifier.value = cloudData;
+
+      await LogHelper.writeLog("SYNC: Data berhasil diperbarui dari Atlas", level: 2);
     } catch (e) {
-      await LogHelper.writeLog("ERROR: Gagal load data dari Cloud - $e", level: 1);
+      await LogHelper.writeLog("OFFLINE: Menggunakan data cache lokal", level: 2);
     }
   }
 
-  // MENAMBAH DATA KE CLOUD
-  Future<void> addLog(String title, String desc, String category) async {
+  /// 2. ADD DATA (Instant Local + Background Cloud)
+  Future<void> addLog(String title, String desc, String authorId, String teamId) async {
     final newLog = LogModel(
-      id: ObjectId(), // Berikan ID unik otomatis
+      id: ObjectId().oid, // Menggunakan .oid (String) untuk Hive
       title: title,
       description: desc,
-      date: DateTime.now().toIso8601String(),
-      category: category,
+      date: DateTime.now().toString(),
+      authorId: authorId,
+      teamId: teamId,
     );
 
+    // ACTION 1: Simpan ke Hive (Instan)
+    await _myBox.add(newLog);
+    logsNotifier.value = _myBox.values.toList(); // Refresh UI langsung
+
+    // ACTION 2: Kirim ke MongoDB Atlas (Background)
     try {
-      // 1. Simpan ke MongoDB Atlas (Tunggu konfirmasi Cloud)
       await MongoService().insertLog(newLog);
-
-      // 2. Jika sukses, baru update tampilan di layar (Lokal)
-      final currentLogs = List<LogModel>.from(logsNotifier.value);
-      currentLogs.add(newLog);
-      logsNotifier.value = currentLogs;
-
-      await LogHelper.writeLog("SUCCESS: Tambah data '${newLog.title}'", source: "log_controller.dart");
+      await LogHelper.writeLog("SUCCESS: Data tersinkron ke Cloud", source: "log_controller.dart");
     } catch (e) {
-      await LogHelper.writeLog("ERROR: Gagal sinkronisasi Add - $e", level: 1);
+      await LogHelper.writeLog("WARNING: Data tersimpan lokal, akan sinkron saat online", level: 1);
     }
   }
 
-  // MENGUBAH DATA DI CLOUD
-  Future<void> updateLog(int index, String newTitle, String newDesc, String newCategory) async {
-    final currentLogs = List<LogModel>.from(logsNotifier.value);
-    final oldLog = currentLogs[index];
-
+  /// 3. UPDATE DATA
+  Future<void> updateLog(int index, String title, String desc) async {
+    final logToUpdate = logsNotifier.value[index];
     final updatedLog = LogModel(
-      id: oldLog.id, // ID HARUS TETAP SAMA agar Cloud tahu dokumen mana yang diubah
-      title: newTitle,
-      description: newDesc,
-      date: DateTime.now().toIso8601String(),
-      category: newCategory,
+      id: logToUpdate.id,
+      title: title,
+      description: desc,
+      date: DateTime.now().toString(),
+      authorId: logToUpdate.authorId,
+      teamId: logToUpdate.teamId,
+      isPublic: logToUpdate.isPublic,
     );
 
+    // ACTION 1: Update Hive
+    await _myBox.putAt(index, updatedLog);
+    logsNotifier.value = _myBox.values.toList();
+
+    // ACTION 2: Update Cloud
     try {
       await MongoService().updateLog(updatedLog);
-      
-      currentLogs[index] = updatedLog;
-      logsNotifier.value = currentLogs;
-      
-      await LogHelper.writeLog("SUCCESS: Update '${oldLog.title}' Berhasil", source: "log_controller.dart");
     } catch (e) {
-      await LogHelper.writeLog("ERROR: Gagal sinkronisasi Update - $e", level: 1);
+      await LogHelper.writeLog("WARNING: Update tersimpan lokal", level: 1);
     }
   }
 
-  // MENGHAPUS DATA DARI CLOUD
+  /// 4. REMOVE DATA
   Future<void> removeLog(int index) async {
-    final currentLogs = List<LogModel>.from(logsNotifier.value);
-    final targetLog = currentLogs[index];
+    final logToRemove = logsNotifier.value[index];
+    
+    // ACTION 1: Hapus dari Hive
+    await _myBox.deleteAt(index);
+    logsNotifier.value = _myBox.values.toList();
 
+    // ACTION 2: Hapus dari Cloud
     try {
-      if (targetLog.id == null) throw Exception("ID Log tidak ditemukan.");
-      
-      await MongoService().deleteLog(targetLog.id!);
-      
-      currentLogs.removeAt(index);
-      logsNotifier.value = currentLogs;
-      
-      await LogHelper.writeLog("SUCCESS: Hapus '${targetLog.title}' Berhasil", source: "log_controller.dart");
+      if (logToRemove.id != null) {
+        await MongoService().deleteLog(logToRemove.id!);
+      }
     } catch (e) {
-      await LogHelper.writeLog("ERROR: Gagal sinkronisasi Hapus - $e", level: 1);
+      await LogHelper.writeLog("WARNING: Hapus secara offline", level: 1);
     }
   }
 }
