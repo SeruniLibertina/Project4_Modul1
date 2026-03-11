@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'login_controller.dart';
 import '../logbook/log_view.dart';
 
 class LoginView extends StatefulWidget {
@@ -9,130 +10,90 @@ class LoginView extends StatefulWidget {
 }
 
 class _LoginViewState extends State<LoginView> {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _teamController = TextEditingController(text: "Mekatronika_01"); 
-  String _selectedRole = 'Anggota'; 
+  final TextEditingController _userController = TextEditingController();
+  final TextEditingController _passController = TextEditingController();
+  final LoginController _loginController = LoginController();
 
-  void _doLogin() {
-    if (_usernameController.text.isEmpty || _teamController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Nama dan Tim tidak boleh kosong!", style: TextStyle(color: Colors.black87)),
-          backgroundColor: Color(0xFFFFCDD2), 
-        ),
-      );
+  void _doLogin() async {
+    if (_userController.text.isEmpty || _passController.text.isEmpty) {
+      _showSnackBar("Isi dulu ya username & password-nya!", Colors.pink.shade200);
       return;
     }
 
-    final Map<String, dynamic> currentUser = {
-      'uid': _usernameController.text.toLowerCase().replaceAll(' ', '_'), 
-      'username': _usernameController.text,
-      'role': _selectedRole, 
-      'teamId': _teamController.text, 
-    };
+    final success = await _loginController.login(_userController.text, _passController.text);
 
-    Navigator.pushReplacement(
-      context,
-      MaterialPageRoute(
-        builder: (context) => LogView(currentUser: currentUser),
-      ),
-    );
+    if (success && mounted) {
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (context) => LogView(currentUser: _loginController.currentUserData!)),
+      );
+    } else if (mounted) {
+      _showSnackBar("Oops! Akunnya nggak ketemu nih", Colors.orange.shade200);
+    }
   }
 
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _teamController.dispose();
-    super.dispose();
+  void _showSnackBar(String msg, Color color) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(msg, style: const TextStyle(color: Colors.black87)), backgroundColor: color),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE1F5FE),
+      backgroundColor: const Color(0xFFE1F5FE), // Soft Blue Background
       body: Center(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.all(30),
           child: Container(
-            padding: const EdgeInsets.all(32.0),
+            padding: const EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withOpacity(0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                )
-              ],
+              color: Colors.white.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(30),
+              boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.1), blurRadius: 20)],
             ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
               children: [
-                const Icon(Icons.security, size: 64, color: Color(0xFF4FC3F7)),
-                const SizedBox(height: 16),
-                const Text(
-                  "Masuk Logbook",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Pilih peran Anda untuk simulasi RBAC",
-                  style: TextStyle(color: Colors.black54),
-                ),
-                const SizedBox(height: 32),
-                
-                TextField(
-                  controller: _usernameController,
-                  decoration: InputDecoration(
-                    labelText: "Nama Pengguna",
-                    prefixIcon: const Icon(Icons.person_outline),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                TextField(
-                  controller: _teamController,
-                  decoration: InputDecoration(
-                    labelText: "ID Tim / Kelompok",
-                    prefixIcon: const Icon(Icons.group_outlined),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                DropdownButtonFormField<String>(
-                  value: _selectedRole,
-                  decoration: InputDecoration(
-                    labelText: "Peran (Role)",
-                    prefixIcon: const Icon(Icons.badge_outlined),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                  items: ['Ketua', 'Anggota'].map((role) {
-                    return DropdownMenuItem(value: role, child: Text(role));
-                  }).toList(),
-                  onChanged: (value) => setState(() => _selectedRole = value!),
-                ),
-                const SizedBox(height: 32),
-
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _doLogin,
+                const Text("☁️", style: TextStyle(fontSize: 50)),
+                const Text("Welcome Back!", style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.blueGrey)),
+                const SizedBox(height: 30),
+                _customField(_userController, "Username", Icons.person_outline),
+                const SizedBox(height: 15),
+                _customField(_passController, "Password", Icons.lock_outline, isPass: true),
+                const SizedBox(height: 30),
+                ListenableBuilder(
+                  listenable: _loginController,
+                  builder: (context, _) => ElevatedButton(
+                    onPressed: _loginController.isLoading ? null : _doLogin,
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4FC3F7),
-                      foregroundColor: Colors.white,
+                      backgroundColor: const Color(0xFFFCE4EC), // Soft Pink
+                      foregroundColor: Colors.pink.shade700,
+                      minimumSize: const Size(double.infinity, 50),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                     ),
-                    child: const Text("Masuk", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: _loginController.isLoading 
+                      ? const CircularProgressIndicator() 
+                      : const Text("Masuk", style: TextStyle(fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _customField(TextEditingController ctrl, String label, IconData icon, {bool isPass = false}) {
+    return TextField(
+      controller: ctrl,
+      obscureText: isPass,
+      decoration: InputDecoration(
+        labelText: label,
+        prefixIcon: Icon(icon, color: Colors.blue.shade200),
+        filled: true,
+        fillColor: Colors.blue.shade50.withOpacity(0.3),
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(15), borderSide: BorderSide.none),
       ),
     );
   }
