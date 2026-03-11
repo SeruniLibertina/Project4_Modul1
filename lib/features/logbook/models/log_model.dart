@@ -1,7 +1,6 @@
 import 'package:hive/hive.dart';
 import 'package:mongo_dart/mongo_dart.dart' show ObjectId;
 
-// Baris ini WAJIB ada, nanti file ini akan di-generate otomatis oleh Flutter
 part 'log_model.g.dart';
 
 @HiveType(typeId: 0)
@@ -19,13 +18,17 @@ class LogModel {
   final String date;
 
   @HiveField(4)
-  final String authorId; // ID unik pengguna yang membuat log
+  final String authorId; 
 
   @HiveField(5)
-  final String teamId;   // ID kelompok
+  final String teamId;   
 
   @HiveField(6)
-  final bool isPublic;   // Status privasi (Untuk Task 5)
+  final bool isPublic;   
+
+  // TAMBAHAN UNTUK HOMEWORK: Field Kategori
+  @HiveField(7)
+  final String category;
 
   LogModel({
     this.id,
@@ -34,7 +37,8 @@ class LogModel {
     required this.date,
     required this.authorId,
     required this.teamId,
-    this.isPublic = false, // Default-nya private
+    this.isPublic = false, 
+    this.category = 'Software', // Default value
   });
 
   Map<String, dynamic> toMap() => {
@@ -45,6 +49,7 @@ class LogModel {
     'authorId': authorId,
     'teamId': teamId,
     'isPublic': isPublic,
+    'category': category,
   };
 
   factory LogModel.fromMap(Map<String, dynamic> map) {
@@ -56,6 +61,7 @@ class LogModel {
       authorId: map['authorId'] ?? 'unknown_user',
       teamId: map['teamId'] ?? 'no_team',
       isPublic: map['isPublic'] ?? false,
+      category: map['category'] ?? 'Software',
     );
   }
 }

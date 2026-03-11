@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:provider/provider.dart';
-import 'login_controller.dart';
 import '../logbook/log_view.dart';
 
 class LoginView extends StatefulWidget {
@@ -12,90 +10,127 @@ class LoginView extends StatefulWidget {
 
 class _LoginViewState extends State<LoginView> {
   final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
-  bool _isObscure = true;
+  final TextEditingController _teamController = TextEditingController(text: "Mekatronika_01"); 
+  String _selectedRole = 'Anggota'; 
+
+  void _doLogin() {
+    if (_usernameController.text.isEmpty || _teamController.text.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text("Nama dan Tim tidak boleh kosong!", style: TextStyle(color: Colors.black87)),
+          backgroundColor: Color(0xFFFFCDD2), 
+        ),
+      );
+      return;
+    }
+
+    final Map<String, dynamic> currentUser = {
+      'uid': _usernameController.text.toLowerCase().replaceAll(' ', '_'), 
+      'username': _usernameController.text,
+      'role': _selectedRole, 
+      'teamId': _teamController.text, 
+    };
+
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(
+        builder: (context) => LogView(currentUser: currentUser),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    _teamController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    final controller = Provider.of<LoginController>(context);
-    final colors = Theme.of(context).colorScheme;
-
     return Scaffold(
-      backgroundColor: colors.surface,
+      backgroundColor: const Color(0xFFE1F5FE),
       body: Center(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
-          child: Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(25),
-                decoration: BoxDecoration(
-                  color: colors.tertiary,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: Colors.white, width: 4),
-                  boxShadow: [BoxShadow(color: Colors.orange.withOpacity(0.1), blurRadius: 15)],
+          child: Container(
+            padding: const EdgeInsets.all(32.0),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.blue.withOpacity(0.1),
+                  blurRadius: 20,
+                  offset: const Offset(0, 10),
+                )
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.security, size: 64, color: Color(0xFF4FC3F7)),
+                const SizedBox(height: 16),
+                const Text(
+                  "Masuk Logbook",
+                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
                 ),
-                child: Icon(Icons.lock_rounded, size: 50, color: Colors.orange.shade300),
-              ),
-              const SizedBox(height: 30),
-              
-              Card(
-                elevation: 4,
-                shadowColor: colors.primary.withOpacity(0.3),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(25)),
-                child: Padding(
-                  padding: const EdgeInsets.all(30.0),
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        Text('Selamat Datang!', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: colors.primary)),
-                        const SizedBox(height: 30),
-                        TextFormField(
-                          controller: _usernameController,
-                          decoration: InputDecoration(labelText: 'Username', prefixIcon: Icon(Icons.person_rounded, color: colors.secondary)),
-                          validator: (value) => (value!.isEmpty) ? 'Username wajib diisi' : null,
-                        ),
-                        const SizedBox(height: 20),
-                        TextFormField(
-                          controller: _passwordController,
-                          obscureText: _isObscure,
-                          decoration: InputDecoration(
-                            labelText: 'Password',
-                            prefixIcon: Icon(Icons.key_rounded, color: colors.secondary),
-                            suffixIcon: IconButton(
-                              icon: Icon(_isObscure ? Icons.visibility_rounded : Icons.visibility_off_rounded),
-                              onPressed: () => setState(() => _isObscure = !_isObscure),
-                            ),
-                          ),
-                          validator: (value) => (value!.isEmpty) ? 'Password wajib diisi' : null,
-                        ),
-                        const SizedBox(height: 30),
-                        ElevatedButton(
-                          onPressed: controller.isLoading ? null : () async {
-                            if (_formKey.currentState!.validate()) {
-                              final success = await controller.login(_usernameController.text, _passwordController.text);
-                              if (success && mounted) {
-                                Navigator.pushAndRemoveUntil(
-                                  context,
-                                  MaterialPageRoute(builder: (context) => LogView(username: _usernameController.text)),
-                                    (route) => false,
-                                  );
-                              } else if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: const Text('Login Gagal!'), backgroundColor: colors.error));
-                              }
-                            }
-                          },
-                          child: controller.isLoading ? const CircularProgressIndicator(color: Colors.white) : const Text('MASUK'),
-                        ),
-                      ],
-                    ),
+                const SizedBox(height: 8),
+                const Text(
+                  "Pilih peran Anda untuk simulasi RBAC",
+                  style: TextStyle(color: Colors.black54),
+                ),
+                const SizedBox(height: 32),
+                
+                TextField(
+                  controller: _usernameController,
+                  decoration: InputDecoration(
+                    labelText: "Nama Pengguna",
+                    prefixIcon: const Icon(Icons.person_outline),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
                   ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 16),
+                
+                TextField(
+                  controller: _teamController,
+                  decoration: InputDecoration(
+                    labelText: "ID Tim / Kelompok",
+                    prefixIcon: const Icon(Icons.group_outlined),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                DropdownButtonFormField<String>(
+                  value: _selectedRole,
+                  decoration: InputDecoration(
+                    labelText: "Peran (Role)",
+                    prefixIcon: const Icon(Icons.badge_outlined),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
+                  ),
+                  items: ['Ketua', 'Anggota'].map((role) {
+                    return DropdownMenuItem(value: role, child: Text(role));
+                  }).toList(),
+                  onChanged: (value) => setState(() => _selectedRole = value!),
+                ),
+                const SizedBox(height: 32),
+
+                SizedBox(
+                  width: double.infinity,
+                  height: 50,
+                  child: ElevatedButton(
+                    onPressed: _doLogin,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF4FC3F7),
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+                    ),
+                    child: const Text("Masuk", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

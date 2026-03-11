@@ -1,145 +1,169 @@
 import 'package:flutter/material.dart';
-import '../logbook/log_view.dart';
+import 'log_controller.dart';
+import 'models/log_model.dart';
+import '../../services/access_control_service.dart';
+import 'log_editor_page.dart';
+import '../auth/login_view.dart';
 
-class LoginView extends StatefulWidget {
-  const LoginView({super.key});
+class LogView extends StatefulWidget {
+  final Map<String, dynamic> currentUser;
+
+  const LogView({super.key, required this.currentUser});
 
   @override
-  State<LoginView> createState() => _LoginViewState();
+  State<LogView> createState() => _LogViewState();
 }
 
-class _LoginViewState extends State<LoginView> {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _teamController = TextEditingController(text: "Mekatronika_01"); // Default Tim
-  String _selectedRole = 'Anggota'; // Default Role
+class _LogViewState extends State<LogView> {
+  late final LogController _controller;
 
-  void _doLogin() {
-    if (_usernameController.text.isEmpty || _teamController.text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Nama dan Tim tidak boleh kosong!", style: TextStyle(color: Colors.black87)),
-          backgroundColor: Color(0xFFFFCDD2), // Pastel Red
-        ),
-      );
-      return;
-    }
+  @override
+  void initState() {
+    super.initState();
+    _controller = LogController();
+    // Panggil loadLogs dengan teamId dan uid user yang sedang login
+    _controller.loadLogs(widget.currentUser['teamId'], widget.currentUser['uid']);
+  }
 
-    // --- STRUKTUR DATA USER BARU UNTUK MODUL 5 ---
-    // Gatekeeper di LogView membutuhkan data ini untuk menentukan Hak Akses
-    final Map<String, dynamic> currentUser = {
-      'uid': _usernameController.text.toLowerCase().replaceAll(' ', '_'), // Simulasi ID Unik
-      'username': _usernameController.text,
-      'role': _selectedRole, // 'Ketua' atau 'Anggota'
-      'teamId': _teamController.text, // Filter Isolasi Tim
-    };
-
-    // Pindah ke LogView dan bawa data currentUser
-    Navigator.pushReplacement(
+  void _goToEditor({LogModel? log, int? index}) {
+    Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => LogView(currentUser: currentUser),
+        builder: (context) => LogEditorPage(
+          log: log,
+          index: index,
+          controller: _controller,
+          currentUser: widget.currentUser,
+        ),
       ),
     );
   }
 
   @override
-  void dispose() {
-    _usernameController.dispose();
-    _teamController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFE1F5FE), // Soft Blue Background
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Container(
-            padding: const EdgeInsets.all(32.0),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.blue.withOpacity(0.1),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                )
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.security, size: 64, color: Color(0xFF4FC3F7)),
-                const SizedBox(height: 16),
-                const Text(
-                  "Masuk Logbook",
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.black87),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  "Pilih peran Anda untuk simulasi RBAC",
-                  style: TextStyle(color: Colors.black54),
-                ),
-                const SizedBox(height: 32),
-                
-                // Input Nama
-                TextField(
-                  controller: _usernameController,
-                  decoration: InputDecoration(
-                    labelText: "Nama Pengguna",
-                    prefixIcon: const Icon(Icons.person_outline),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                
-                // Input Team ID
-                TextField(
-                  controller: _teamController,
-                  decoration: InputDecoration(
-                    labelText: "ID Tim / Kelompok",
-                    prefixIcon: const Icon(Icons.group_outlined),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                ),
-                const SizedBox(height: 16),
-
-                // Dropdown Role
-                DropdownButtonFormField<String>(
-                  value: _selectedRole,
-                  decoration: InputDecoration(
-                    labelText: "Peran (Role)",
-                    prefixIcon: const Icon(Icons.badge_outlined),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(15)),
-                  ),
-                  items: ['Ketua', 'Anggota'].map((role) {
-                    return DropdownMenuItem(value: role, child: Text(role));
-                  }).toList(),
-                  onChanged: (value) => setState(() => _selectedRole = value!),
-                ),
-                const SizedBox(height: 32),
-
-                // Tombol Login
-                SizedBox(
-                  width: double.infinity,
-                  height: 50,
-                  child: ElevatedButton(
-                    onPressed: _doLogin,
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF4FC3F7),
-                      foregroundColor: Colors.white,
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
-                    ),
-                    child: const Text("Masuk", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                ),
-              ],
-            ),
+      appBar: AppBar(
+        title: Text("Logbook: ${widget.currentUser['username']}"),
+        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => _controller.loadLogs(widget.currentUser['teamId'], widget.currentUser['uid']),
           ),
-        ),
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: const Text("Konfirmasi Logout"),
+                  content: const Text("Apakah Anda yakin ingin keluar?"),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text("Batal"),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.pushAndRemoveUntil(
+                          context,
+                          MaterialPageRoute(builder: (context) => const LoginView()),
+                          (route) => false,
+                        );
+                      },
+                      child: const Text("Ya, Keluar", style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+      body: ValueListenableBuilder<List<LogModel>>(
+        valueListenable: _controller.logsNotifier,
+        builder: (context, currentLogs, child) {
+          if (currentLogs.isEmpty) {
+            return Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.note_alt_outlined, size: 64, color: Colors.grey),
+                  const SizedBox(height: 16),
+                  const Text("Belum ada catatan."),
+                  const SizedBox(height: 16),
+                  ElevatedButton(
+                    onPressed: () => _goToEditor(),
+                    child: const Text("Buat Catatan Pertama"),
+                  ),
+                ],
+              ),
+            );
+          }
+
+          return ListView.builder(
+            itemCount: currentLogs.length,
+            itemBuilder: (context, index) {
+              final log = currentLogs[index];
+              final bool isOwner = log.authorId == widget.currentUser['uid'];
+
+              // --- FITUR COLOR CODING BERDASARKAN KATEGORI ---
+              Color cardColor = Colors.white;
+              if (log.category == 'Mechanical') {
+                cardColor = Colors.green.shade100;
+              } else if (log.category == 'Electronic') {
+                cardColor = Colors.blue.shade100;
+              } else if (log.category == 'Software') {
+                cardColor = Colors.orange.shade100;
+              }
+
+              return Card(
+                color: cardColor, // Menggunakan warna dari kategori
+                margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                child: ListTile(
+                  leading: Icon(
+                    log.id != null ? Icons.cloud_done : Icons.cloud_upload_outlined,
+                    color: log.id != null ? Colors.green : Colors.orange,
+                  ),
+                  title: Text(log.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text(
+                    "${log.category}\n${log.description}",
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (AccessControlService.canPerform(
+                        widget.currentUser['role'],
+                        AccessControlService.actionUpdate,
+                        isOwner: isOwner,
+                      ))
+                        IconButton(
+                          icon: const Icon(Icons.edit, color: Colors.blue),
+                          onPressed: () => _goToEditor(log: log, index: index),
+                        ),
+                      if (AccessControlService.canPerform(
+                        widget.currentUser['role'],
+                        AccessControlService.actionDelete,
+                        isOwner: isOwner,
+                      ))
+                        IconButton(
+                          icon: const Icon(Icons.delete, color: Colors.red),
+                          onPressed: () => _controller.removeLog(index),
+                        ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          );
+        },
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => _goToEditor(),
+        child: const Icon(Icons.add),
       ),
     );
   }

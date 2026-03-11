@@ -26,12 +26,18 @@ class LogEditorPage extends StatefulWidget {
 class _LogEditorPageState extends State<LogEditorPage> {
   late TextEditingController _titleController;
   late TextEditingController _descController;
+  
+  // 1. Variabel untuk menyimpan kategori yang dipilih
+  String _selectedCategory = 'Software'; 
 
   @override
   void initState() {
     super.initState();
     _titleController = TextEditingController(text: widget.log?.title ?? '');
     _descController = TextEditingController(text: widget.log?.description ?? '');
+
+    // 2. Atur nilai awalnya (jika sedang mengedit data lama)
+    _selectedCategory = widget.log?.category ?? 'Software';
 
     // Listener agar Tab Pratinjau (Markdown) ter-update otomatis saat kita mengetik
     _descController.addListener(() {
@@ -54,6 +60,7 @@ class _LogEditorPageState extends State<LogEditorPage> {
         _descController.text,
         widget.currentUser['uid'] ?? 'unknown_uid',
         widget.currentUser['teamId'] ?? 'no_team',
+        _selectedCategory, // 3. TAMBAHAN: Kirim kategori saat nambah log
       );
     } else {
       // Update Data Lama
@@ -61,6 +68,7 @@ class _LogEditorPageState extends State<LogEditorPage> {
         widget.index!,
         _titleController.text,
         _descController.text,
+        _selectedCategory, // 3. TAMBAHAN: Kirim kategori saat update log
       );
     }
     
@@ -112,6 +120,26 @@ class _LogEditorPageState extends State<LogEditorPage> {
                     ),
                   ),
                   const SizedBox(height: 16),
+                  
+                  // 4. --- TAMBAHAN DROPDOWN KATEGORI ---
+                  DropdownButtonFormField<String>(
+                    value: _selectedCategory,
+                    decoration: const InputDecoration(
+                      labelText: "Kategori Logbook",
+                      border: OutlineInputBorder(),
+                    ),
+                    items: ['Mechanical', 'Electronic', 'Software'].map((cat) {
+                      return DropdownMenuItem(value: cat, child: Text(cat));
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() => _selectedCategory = val);
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // ----------------------------------
+
                   Expanded(
                     child: TextField(
                       controller: _descController,
