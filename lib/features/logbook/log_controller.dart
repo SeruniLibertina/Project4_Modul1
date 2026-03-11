@@ -11,52 +11,82 @@ class LogController {
   // Mengakses box Hive yang sudah dibuka di main.dart
   final _myBox = Hive.box<LogModel>('offline_logs');
 
-  /// 1. LOAD DATA (Offline-First Strategy)
+  /// 1. LOAD DATA (Offline-First + Privacy & Team Filter)
   Future<void> loadLogs(String teamId, String currentUserId) async {
-    // Langkah 1: Ambil data dari Hive (Sangat Cepat/Instan)
-    // Data di Hive sudah terfilter dari hasil sync sebelumnya
-    logsNotifier.value = _myBox.values.toList();
+    // Langkah 1: Ambil data dari Hive (Offline Cache) khusus untuk tim ini
+    final localLogs = _myBox.values.where((log) => log.teamId == teamId).toList();
+    
+    // UI Offline: Tampilkan HANYA milik sendiri ATAU yang berstatus public
+    logsNotifier.value = localLogs.where((log) => 
+      log.authorId == currentUserId || log.isPublic == true
+    ).toList();
 
     // Langkah 2: Sync dari Cloud (Background Process)
     try {
       final cloudData = await MongoService().getLogs(teamId);
       
-      // VISIBILITY FILTER: Saring data sebelum ditampilkan / disimpan ke Hive
+      // VISIBILITY FILTER: Saring sesuai kepemilikan dan status publik
       final visibleLogs = cloudData.where((log) {
         return log.authorId == currentUserId || log.isPublic == true;
       }).toList();
 
-      // Update Hive dengan data terbaru dari Cloud agar sinkron
-      await _myBox.clear();
-      await _myBox.addAll(visibleLogs);
+      // Mencegah catatan offline yang belum tersinkronisasi ikut terhapus
+      final cloudLogIds = cloudData.map((e) => e.id).toSet();
+      final pendingOfflineLogs = localLogs.where((log) => !cloudLogIds.contains(log.id)).toList();
 
-      // Update UI dengan data Cloud yang sudah difilter
-      logsNotifier.value = visibleLogs;
+      // Saring juga catatan offline pending agar sesuai aturan privasi sebelum tampil di UI
+      final visiblePendingLogs = pendingOfflineLogs.where((log) => 
+        log.authorId == currentUserId || log.isPublic == true
+      ).toList();
+
+      // Gabungkan data cloud dan pending offline yang SAH/BOLEH dilihat oleh user ini
+      final mergedVisibleLogs = [...visibleLogs, ...visiblePendingLogs];
+
+      // Update Hive Cache: Simpan SEMUA data (termasuk private milik orang lain) 
+      // agar jika orang tersebut login di HP yang sama saat offline, datanya tetap ada.
+      await _myBox.clear();
+      await _myBox.addAll([...cloudData, ...pendingOfflineLogs]);
+
+      // Update UI HANYA dengan data yang diizinkan (mergedVisibleLogs)
+      logsNotifier.value = mergedVisibleLogs;
 
       await LogHelper.writeLog("SYNC: Data berhasil diperbarui dari Atlas", level: 2);
+      
+      // (Opsional) Upload otomatis catatan offline ke cloud secara diam-diam
+      for (var pendingLog in pendingOfflineLogs) {
+        MongoService().insertLog(pendingLog).catchError((_) {});
+      }
+
     } catch (e) {
-      // Jika offline, baca dari Hive (yang sebelumnya sudah terfilter)
-      logsNotifier.value = _myBox.values.toList();
+      // Jika internet mati (Offline Mode), gunakan cache lokal yang sudah difilter
+      logsNotifier.value = localLogs.where((log) => 
+        log.authorId == currentUserId || log.isPublic == true
+      ).toList();
       await LogHelper.writeLog("OFFLINE: Menggunakan data cache lokal", level: 2);
     }
   }
 
   /// 2. ADD DATA (Instant Local + Background Cloud)
-  // Tambahkan parameter String category di dalam kurung
-  Future<void> addLog(String title, String desc, String authorId, String teamId, String category) async {
+  Future<void> addLog(String title, String desc, String authorId, String teamId, String category, {bool isPublic = true}) async {
     final newLog = LogModel(
-      id: ObjectId().oid, // Menggunakan .oid (String) untuk Hive
+      id: ObjectId().oid, // Generate ID unik untuk Hive/MongoDB
       title: title,
       description: desc,
       date: DateTime.now().toString(),
       authorId: authorId,
       teamId: teamId,
-      category: category, // <--- TAMBAHAN BARU
+      category: category, 
+      isPublic: isPublic, // Menyimpan status privasi
     );
 
     // ACTION 1: Simpan ke Hive (Instan)
     await _myBox.add(newLog);
-    logsNotifier.value = _myBox.values.toList(); // Refresh UI langsung
+    
+    // Refresh UI langsung (Saring untuk tim dan visibilitas saat ini)
+    final localLogs = _myBox.values.where((log) => log.teamId == teamId).toList();
+    logsNotifier.value = localLogs.where((log) => 
+      log.authorId == authorId || log.isPublic == true
+    ).toList();
 
     // ACTION 2: Kirim ke MongoDB Atlas (Background)
     try {
@@ -67,10 +97,11 @@ class LogController {
     }
   }
 
-  /// 3. UPDATE DATA
-  // Tambahkan parameter String category di dalam kurung
-  Future<void> updateLog(int index, String title, String desc, String category) async {
-    final logToUpdate = logsNotifier.value[index];
+  /// 3. UPDATE DATA (Dengan Proteksi Index Asli)
+  Future<void> updateLog(int uiIndex, String title, String desc, String category, {bool? isPublic}) async {
+    // Ambil log dari UI list berdasarkan index yang diklik
+    final logToUpdate = logsNotifier.value[uiIndex];
+    
     final updatedLog = LogModel(
       id: logToUpdate.id,
       title: title,
@@ -78,13 +109,23 @@ class LogController {
       date: DateTime.now().toString(), // Update waktu edit
       authorId: logToUpdate.authorId,
       teamId: logToUpdate.teamId,
-      isPublic: logToUpdate.isPublic,
-      category: category, // <--- TAMBAHAN BARU
+      isPublic: isPublic ?? logToUpdate.isPublic,
+      category: category, 
     );
 
-    // ACTION 1: Update Hive
-    await _myBox.putAt(index, updatedLog);
-    logsNotifier.value = _myBox.values.toList();
+    // ACTION 1: Cari index ASLI di dalam Hive berdasarkan ID log
+    // Ini krusial karena index di UI list bisa berbeda dengan index di Hive secara keseluruhan.
+    final hiveIndex = _myBox.values.toList().indexWhere((log) => log.id == updatedLog.id);
+    
+    if (hiveIndex != -1) {
+      await _myBox.putAt(hiveIndex, updatedLog);
+    }
+    
+    // Update UI
+    final localLogs = _myBox.values.where((log) => log.teamId == updatedLog.teamId).toList();
+    logsNotifier.value = localLogs.where((log) => 
+      log.authorId == updatedLog.authorId || log.isPublic == true
+    ).toList();
 
     // ACTION 2: Update Cloud
     try {
@@ -94,13 +135,24 @@ class LogController {
     }
   }
 
-  /// 4. REMOVE DATA
-  Future<void> removeLog(int index) async {
-    final logToRemove = logsNotifier.value[index];
+  /// 4. REMOVE DATA (Dengan Proteksi Index Asli)
+  Future<void> removeLog(int uiIndex) async {
+    // Ambil log dari UI list yang ingin dihapus
+    final logToRemove = logsNotifier.value[uiIndex];
+    final currentTeamId = logToRemove.teamId;
+    final currentAuthorId = logToRemove.authorId;
     
-    // ACTION 1: Hapus dari Hive
-    await _myBox.deleteAt(index);
-    logsNotifier.value = _myBox.values.toList();
+    // ACTION 1: Hapus dari Hive menggunakan ID log (bukan index UI)
+    final hiveIndex = _myBox.values.toList().indexWhere((log) => log.id == logToRemove.id);
+    if (hiveIndex != -1) {
+      await _myBox.deleteAt(hiveIndex);
+    }
+
+    // Update UI
+    final localLogs = _myBox.values.where((log) => log.teamId == currentTeamId).toList();
+    logsNotifier.value = localLogs.where((log) => 
+      log.authorId == currentAuthorId || log.isPublic == true
+    ).toList();
 
     // ACTION 2: Hapus dari Cloud
     try {

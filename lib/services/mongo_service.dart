@@ -51,7 +51,7 @@ class MongoService {
       await LogHelper.writeLog("INFO: Fetching data for Team: $teamId", source: _source, level: 3);
 
       final List<Map<String, dynamic>> data = await collection
-          .find(where.eq('teamId', teamId)) // Filter hanya log kelompok ini
+          .find(where.eq('teamId', teamId))
           .toList();
       
       return data.map((json) => LogModel.fromMap(json)).toList();
@@ -83,12 +83,19 @@ class MongoService {
             .set('title', log.title)
             .set('description', log.description)
             .set('date', log.date)
-            .set('isPublic', log.isPublic),
+            .set('isPublic', log.isPublic)
+            .set('category', log.category), // FIX: sync category ke Cloud
       );
     } catch (e) {
       await LogHelper.writeLog("ERROR: Update Failed - $e", source: _source, level: 1);
       rethrow;
     }
+  }
+
+  /// CLOSE: Menutup koneksi MongoDB (diperlukan untuk unit testing)
+  Future<void> close() async {
+    await _db?.close();
+    await LogHelper.writeLog("Koneksi MongoDB Ditutup", source: _source, level: 2);
   }
 
   /// DELETE: Menghapus log di Cloud

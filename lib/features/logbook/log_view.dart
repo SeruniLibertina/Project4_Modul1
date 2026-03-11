@@ -345,7 +345,7 @@ class _LogViewState extends State<LogView> {
           elevation: 0, // Matikan elevasi bawaan karena sudah diganti Container shadow
           onPressed: () => _goToEditor(),
           icon: const Icon(Icons.edit_rounded, color: Colors.white),
-          label: const Text("Catat! ✨", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1)),
+          label: const Text("Catat!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1)),
         ),
       ),
     );
