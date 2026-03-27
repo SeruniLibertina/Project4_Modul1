@@ -70,6 +70,7 @@ class _LogEditorPageState extends State<LogEditorPage> {
         widget.currentUser['uid'] ?? 'unknown',
         widget.currentUser['teamId'] ?? 'no_team',
         _selectedCategory,
+        isPublic: true,
       );
     } else {
       // Modul 3: Update data lokal/cloud yang sudah ada

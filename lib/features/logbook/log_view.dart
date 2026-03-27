@@ -6,6 +6,7 @@ import '../../services/access_control_service.dart';
 import 'log_editor_page.dart';
 import '../auth/login_view.dart';
 import '../auth/login_controller.dart'; 
+import 'package:flutter_markdown/flutter_markdown.dart';
 
 class LogView extends StatefulWidget {
   final Map<String, dynamic> currentUser;
@@ -30,12 +31,27 @@ class _LogViewState extends State<LogView> {
     
     Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
       if (mounted) {
+        bool currentOnline = results.isNotEmpty && results.first != ConnectivityResult.none;
+        
+        // Jika sebelumnya offline (_isOnline == false) dan sekarang jadi online (currentOnline == true)
+        if (!_isOnline && currentOnline) {
+          // Panggil ulang loadLogs untuk men-trigger sinkronisasi background!
+          _controller.loadLogs(widget.currentUser['teamId'], widget.currentUser['uid']);
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("Internet terhubung! Sinkronisasi data... ☁️"),
+              backgroundColor: Colors.green.shade400,
+            )
+          );
+        }
+
         setState(() {
-          _isOnline = results.isNotEmpty && results.first != ConnectivityResult.none;
+          _isOnline = currentOnline;
         });
       }
     });
-  }
+  } // <--- Tadi kurung kurawal ini yang hilang / kehapus!
 
   Future<void> _checkConnectivity() async {
     var results = await (Connectivity().checkConnectivity());
@@ -267,8 +283,17 @@ class _LogViewState extends State<LogView> {
                             const SizedBox(height: 12),
                             Text(log.title, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18, color: _getTextColor(log.category))),
                             const SizedBox(height: 4),
-                            Text(log.description, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14, color: _getTextColor(log.category).withOpacity(0.7))),
-                            
+                            Container(
+                              constraints: const BoxConstraints(maxHeight: 50), // Batasi tinggi maksimal deskripsi
+                              child: MarkdownBody(
+                                data: log.description,
+                                styleSheet: MarkdownStyleSheet(
+                                  p: TextStyle(fontSize: 14, color: _getTextColor(log.category).withOpacity(0.7)),
+                                  strong: TextStyle(fontWeight: FontWeight.bold, color: _getTextColor(log.category)),
+                                  em: TextStyle(fontStyle: FontStyle.italic, color: _getTextColor(log.category)),
+                                ),
+                              ),
+                            ),
                             const SizedBox(height: 16),
                             
                             // --- BOTTOM ROW: STATUS & ACTIONS ---
@@ -328,7 +353,6 @@ class _LogViewState extends State<LogView> {
           ),
         ],
       ),
-      // --- PERBAIKAN FAB (Menghapus property shadowColor yang bikin error) ---
       floatingActionButton: Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(30),
@@ -342,7 +366,7 @@ class _LogViewState extends State<LogView> {
         ),
         child: FloatingActionButton.extended(
           backgroundColor: Colors.pink.shade300,
-          elevation: 0, // Matikan elevasi bawaan karena sudah diganti Container shadow
+          elevation: 0, 
           onPressed: () => _goToEditor(),
           icon: const Icon(Icons.edit_rounded, color: Colors.white),
           label: const Text("Catat!", style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, letterSpacing: 1)),
