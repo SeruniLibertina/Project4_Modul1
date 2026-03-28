@@ -1,5 +1,6 @@
 import 'package:mongo_dart/mongo_dart.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:flutter/foundation.dart';
 import '../features/logbook/models/log_model.dart';
 import '../helpers/log_helper.dart';
 
@@ -38,11 +39,27 @@ class MongoService {
   }
 
   Future<DbCollection> _getSafeCollection() async {
-    if (_db == null || _db!.state != State.OPEN || _collection == null) {
-      await connect();
+      // 1. Cek standar
+      if (_db == null || _db!.state != State.OPEN || _collection == null) {
+        await connect();
+      }
+
+      // 2. CEK KESEHATAN KONEKSI (AUTO-RECONNECT)
+      try {
+        // Tes kirim sinyal kecil ke MongoDB untuk memastikan 'pipa' masih hidup
+        await _db!.pingCommand(); 
+      } catch (e) {
+        // Jika error (karena internet sempat mati), hancurkan memori koneksi lama
+        debugPrint("Koneksi terputus (No master connection), menyambung ulang...");
+        try { await _db?.close(); } catch (_) {} // Abaikan error saat menutup
+        
+        // Reset dan buat koneksi baru yang segar!
+        _db = null; 
+        await connect();
+      }
+
+      return _collection!;
     }
-    return _collection!;
-  }
 
   /// READ: Mengambil data dari Cloud berdasarkan teamId
   Future<List<LogModel>> getLogs(String teamId) async {
